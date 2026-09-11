@@ -21,6 +21,22 @@ import (
 	"github.com/hibiken/asynq"
 )
 
+// knowledgeCreatorIDFromContext returns a stable WeKnora user ID only for a
+// real authenticated web user. API keys, integrations, background jobs, and
+// legacy task payloads intentionally create unowned knowledge.
+func knowledgeCreatorIDFromContext(ctx context.Context) *string {
+	principal, ok := types.PrincipalFromContext(ctx)
+	if !ok || principal.Type != types.PrincipalWebUser {
+		return nil
+	}
+	userID, ok := types.UserIDFromContext(ctx)
+	userID = strings.TrimSpace(userID)
+	if !ok || userID == "" || types.IsSyntheticUserID(userID) || principal.ID != userID {
+		return nil
+	}
+	return &userID
+}
+
 // CreateKnowledgeFromFile creates a knowledge entry from an uploaded file
 func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	kbID string, file *multipart.FileHeader, metadata map[string]string, enableMultimodel *bool, customFileName string, tagIDs []string, channel string,
@@ -155,6 +171,7 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 		ID:               uuid.New().String(),
 		TenantID:         tenantID,
 		KnowledgeBaseID:  kbID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             "file",
 		Channel:          defaultChannel(channel),
 		Title:            safeFilename,
@@ -372,6 +389,7 @@ func (s *knowledgeService) CreateKnowledgeFromURL(ctx context.Context,
 		ID:               uuid.New().String(),
 		TenantID:         tenantID,
 		KnowledgeBaseID:  kbID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             "url",
 		Channel:          defaultChannel(channel),
 		Title:            title,
@@ -607,6 +625,7 @@ func (s *knowledgeService) createKnowledgeFromFileURL(
 		ID:               uuid.New().String(),
 		TenantID:         tenantID,
 		KnowledgeBaseID:  kbID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             "file_url",
 		Channel:          defaultChannel(channel),
 		Title:            title,
@@ -777,6 +796,7 @@ func (s *knowledgeService) CreateKnowledgeFromManual(ctx context.Context,
 	knowledge := &types.Knowledge{
 		TenantID:         tenantID,
 		KnowledgeBaseID:  kbID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             types.KnowledgeTypeManual,
 		Channel:          defaultChannel(channel),
 		Title:            title,
@@ -893,6 +913,7 @@ func (s *knowledgeService) createKnowledgeFromPassageInternal(ctx context.Contex
 		ID:               uuid.New().String(),
 		TenantID:         ctx.Value(types.TenantIDContextKey).(uint64),
 		KnowledgeBaseID:  kbID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             "passage",
 		Channel:          defaultChannel(channel),
 		ParseStatus:      "pending",

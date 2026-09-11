@@ -13,6 +13,7 @@ import (
 )
 
 var ErrKnowledgeNotFound = errors.New("knowledge not found")
+var ErrKnowledgeCreatorImmutable = errors.New("knowledge creator_id is immutable")
 
 // likeEscapeChar is the SQL ESCAPE character paired with escapeLikeKeyword.
 const likeEscapeChar = `\`
@@ -28,6 +29,10 @@ func escapeLikeKeyword(keyword string) string {
 
 // omitFieldsOnUpdate defines fields to omit when updating knowledge.
 //
+// CreatorID is immutable ownership metadata. New knowledge records persist it
+// through CreateKnowledge, while every generic update preserves the database
+// value even when a stale or request-derived struct carries nil or another ID.
+//
 // PendingSubtasksCount is deliberately omitted from every full-row Save:
 // it is an orchestration counter owned exclusively by the atomic helpers
 // SetFinalizing (seed), FinalizeSubtask (decrement+promote) and the
@@ -40,7 +45,7 @@ func escapeLikeKeyword(keyword string) string {
 // counter jump back up and never reach zero (the "stuck
 // pending_subtasks_count / never promoted to completed" bug). Omitting
 // the column here means Save can never touch it.
-var omitFieldsOnUpdate = []string{"DeletedAt", "PendingSubtasksCount"}
+var omitFieldsOnUpdate = []string{"DeletedAt", "PendingSubtasksCount", "CreatorID"}
 
 // knowledgeRepository implements knowledge base and knowledge repository interface
 type knowledgeRepository struct {
@@ -521,6 +526,9 @@ func (r *knowledgeRepository) UpdateKnowledgeColumn(
 	column string,
 	value interface{},
 ) error {
+	if column == "creator_id" || column == "CreatorID" {
+		return ErrKnowledgeCreatorImmutable
+	}
 	if column == "error_message" {
 		switch v := value.(type) {
 		case string:
@@ -545,6 +553,12 @@ func (r *knowledgeRepository) UpdateKnowledgeColumns(
 	if len(values) == 0 {
 		return nil
 	}
+	if _, ok := values["creator_id"]; ok {
+		return ErrKnowledgeCreatorImmutable
+	}
+	if _, ok := values["CreatorID"]; ok {
+		return ErrKnowledgeCreatorImmutable
+	}
 	if value, ok := values["error_message"]; ok {
 		switch v := value.(type) {
 		case string:
@@ -565,6 +579,12 @@ func (r *knowledgeRepository) UpdateActiveDeletingKnowledgeColumns(
 ) (bool, error) {
 	if len(values) == 0 {
 		return false, nil
+	}
+	if _, ok := values["creator_id"]; ok {
+		return false, ErrKnowledgeCreatorImmutable
+	}
+	if _, ok := values["CreatorID"]; ok {
+		return false, ErrKnowledgeCreatorImmutable
 	}
 	result := r.db.WithContext(ctx).
 		Model(&types.Knowledge{}).

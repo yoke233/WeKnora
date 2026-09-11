@@ -1669,6 +1669,7 @@ func (s *knowledgeService) ensureFAQKnowledge(
 	knowledge := &types.Knowledge{
 		TenantID:         tenantID,
 		KnowledgeBaseID:  kb.ID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             types.KnowledgeTypeFAQ,
 		Channel:          types.ChannelWeb,
 		Title:            buildFAQKnowledgeTitle(kb.Name),

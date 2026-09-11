@@ -1,0 +1,66 @@
+name: Build YJ API app
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish commit-addressed ARM64 images to GHCR
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: yj-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  images:
+    if: github.repository == 'yoke233/WeKnora'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare source identity
+        id: source
+        shell: bash
+        run: |
+          echo "version=$(cat VERSION)-yj-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: inputs.publish
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build app
+        id: app
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.app
+          platforms: linux/arm64
+          push: ${{ inputs.publish }}
+          tags: ghcr.io/yoke233/weknora-app:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/yoke233/WeKnora
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            VERSION_ARG=${{ steps.source.outputs.version }}
+            COMMIT_ID_ARG=${{ github.sha }}
+            BUILD_TIME_ARG=${{ steps.source.outputs.built }}
+            GOPROXY_ARG=https://proxy.golang.org,direct
+            GOSUMDB_ARG=sum.golang.org
+            WITH_ANYDOC=1
+          cache-from: type=gha,scope=yj-app-arm64
+          cache-to: type=gha,scope=yj-app-arm64,mode=max
+      - name: Record app image digest
+        env:
+          APP_DIGEST: ${{ steps.app.outputs.digest }}
+          PUBLISHED: ${{ inputs.publish }}
+        run: |
+          printf 'Source: `%s`\n\nPublished: `%s`\n\nApp: `%s`\n' \
+            "$GITHUB_SHA" "$PUBLISHED" "$APP_DIGEST" >> "$GITHUB_STEP_SUMMARY"

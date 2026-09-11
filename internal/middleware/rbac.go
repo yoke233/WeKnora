@@ -44,6 +44,120 @@ var ErrResourceNotFound = errors.New("rbac: resource not found")
 //     when enforcement is off, it logs and lets the request through.
 type CreatorLookup func(c *gin.Context) (creatorID string, err error)
 
+// OwnershipResource is the minimum authorization projection for a resource.
+// TenantID must come from the persisted resource, never from request headers.
+type OwnershipResource struct {
+	TenantID         uint64
+	CreatorID        string
+	ManagedAdminOnly bool
+}
+
+// OwnershipResourceLookup resolves the persisted tenant and creator of the
+// resource addressed by a request.
+type OwnershipResourceLookup func(c *gin.Context) (OwnershipResource, error)
+
+// ManagedResourcePolicy selects the managed-workspace rule.
+type ManagedResourcePolicy uint8
+
+const (
+	ManagedResourceAdmin ManagedResourcePolicy = iota
+	ManagedResourceContributorCreate
+	ManagedResourceDocumentOwner
+)
+
+// RequireManagedTenantResource applies the managed workspace's document or KB
+// mutation policy while preserving the legacy creator-or-admin rule elsewhere.
+// Managed document owners must still be Contributors; a Viewer never gains
+// write access merely by matching creator_id.
+func RequireManagedTenantResource(
+	lookup OwnershipResourceLookup,
+	managedPolicy ManagedResourcePolicy,
+	cfg *config.Config,
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if _, ok := types.TenantAPIKeyScopeFromContext(ctx); ok {
+			c.Next()
+			return
+		}
+		resource, err := lookup(c)
+		if errors.Is(err, ErrResourceNotFound) {
+			c.Next()
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Service Unavailable: cannot verify resource ownership"})
+			c.Abort()
+			return
+		}
+		if cfg != nil && cfg.Tenant.IsFileOwnershipEnabled(resource.TenantID) {
+			activeTenantID, _ := types.TenantIDFromContext(ctx)
+			role := types.TenantRoleFromContext(ctx)
+			uid, _ := types.UserIDFromContext(ctx)
+			allowed := activeTenantID == resource.TenantID &&
+				role.HasPermission(types.TenantRoleAdmin)
+			if activeTenantID == resource.TenantID &&
+				managedPolicy == ManagedResourceContributorCreate &&
+				!resource.ManagedAdminOnly &&
+				role.HasPermission(types.TenantRoleContributor) {
+				allowed = true
+			}
+			if activeTenantID == resource.TenantID &&
+				managedPolicy == ManagedResourceDocumentOwner &&
+				!resource.ManagedAdminOnly &&
+				role.HasPermission(types.TenantRoleContributor) &&
+				resource.CreatorID != "" && resource.CreatorID == uid {
+				allowed = true
+			}
+			if allowed {
+				c.Next()
+				return
+			}
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: managed workspace policy denied this mutation"})
+			c.Abort()
+			return
+		}
+
+		evalErr := EvaluateOwnershipOrRole(ctx, cfg, types.TenantRoleAdmin, resource.CreatorID, nil)
+		if evalErr == nil {
+			c.Next()
+			return
+		}
+		if errors.Is(evalErr, ErrOwnershipForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: must own the resource or have the required role"})
+		} else {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Service Unavailable: cannot verify resource ownership"})
+		}
+		c.Abort()
+	}
+}
+
+// RequireManagedTenantCreateRole keeps legacy Contributor creation while
+// requiring Admin for KB/public-resource creation in the managed workspace.
+func RequireManagedTenantCreateRole(cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if _, ok := types.TenantAPIKeyScopeFromContext(ctx); ok {
+			c.Next()
+			return
+		}
+		tenantID, _ := types.TenantIDFromContext(ctx)
+		managed := cfg != nil && cfg.Tenant.IsFileOwnershipEnabled(tenantID)
+		min := types.TenantRoleContributor
+		if managed {
+			min = types.TenantRoleAdmin
+		}
+		role := types.TenantRoleFromContext(ctx)
+		if role.HasPermission(min) ||
+			(!managed && (IsCrossTenantSuperuser(ctx, cfg) || !rbacEnforcementEnabled(cfg))) {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: insufficient workspace role"})
+		c.Abort()
+	}
+}
+
 // RequireRole returns a gin middleware that aborts the request with
 // HTTP 403 unless the caller's TenantRole (set by the auth middleware
 // in TenantRoleContextKey) is at least min.

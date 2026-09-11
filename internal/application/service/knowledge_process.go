@@ -41,6 +41,7 @@ func (s *knowledgeService) cloneKnowledge(
 		ID:               uuid.New().String(),
 		TenantID:         targetKB.TenantID,
 		KnowledgeBaseID:  targetKB.ID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             src.Type,
 		Channel:          src.Channel,
 		Title:            src.Title,

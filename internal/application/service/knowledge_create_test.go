@@ -18,9 +18,12 @@ import (
 type createKnowledgeFileRepoStub struct {
 	interfaces.KnowledgeRepository
 
-	createCalls      int
-	createErr        error
-	createdKnowledge *types.Knowledge
+	createCalls       int
+	createErr         error
+	createdKnowledge  *types.Knowledge
+	exists            bool
+	existingKnowledge *types.Knowledge
+	updatedColumn     string
 }
 
 func (r *createKnowledgeFileRepoStub) CheckKnowledgeExists(
@@ -29,7 +32,7 @@ func (r *createKnowledgeFileRepoStub) CheckKnowledgeExists(
 	kbID string,
 	params *types.KnowledgeCheckParams,
 ) (bool, *types.Knowledge, error) {
-	return false, nil, nil
+	return r.exists, r.existingKnowledge, nil
 }
 
 func (r *createKnowledgeFileRepoStub) CreateKnowledge(ctx context.Context, knowledge *types.Knowledge) error {
@@ -37,6 +40,16 @@ func (r *createKnowledgeFileRepoStub) CreateKnowledge(ctx context.Context, knowl
 	copied := *knowledge
 	r.createdKnowledge = &copied
 	return r.createErr
+}
+
+func (r *createKnowledgeFileRepoStub) UpdateKnowledgeColumn(
+	ctx context.Context,
+	id string,
+	column string,
+	value interface{},
+) error {
+	r.updatedColumn = column
+	return nil
 }
 
 // GetKnowledgeTags is invoked by setAndAttachKnowledgeTags after create even
@@ -190,6 +203,82 @@ func TestCreateKnowledgeFromFilePersistsStoredFilePathOnCreate(t *testing.T) {
 	require.NotNil(t, repo.createdKnowledge)
 	require.Equal(t, "stored/"+knowledge.ID, repo.createdKnowledge.FilePath)
 	require.Equal(t, 1, task.calls)
+}
+
+func TestCreateKnowledgeFromFileRecordsOnlyAuthenticatedHumanCreator(t *testing.T) {
+	t.Parallel()
+
+	repo := &createKnowledgeFileRepoStub{}
+	svc := &knowledgeService{
+		repo:      repo,
+		kbService: &createKnowledgeFileKBServiceStub{kb: &types.KnowledgeBase{ID: "kb-1"}},
+		fileSvc:   &createKnowledgeFileServiceStub{},
+		task:      &createKnowledgeTaskEnqueuerStub{},
+	}
+	ctx := context.WithValue(newCreateKnowledgeFileContext(), types.UserIDContextKey, "user-1")
+
+	knowledge, err := svc.CreateKnowledgeFromFile(
+		ctx,
+		"kb-1",
+		newMultipartFileHeader(t, "owned.txt", "hello"),
+		nil,
+		nil,
+		"",
+		nil,
+		"",
+		nil,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, knowledge.CreatorID)
+	require.Equal(t, "user-1", *knowledge.CreatorID)
+	require.Equal(t, knowledge.CreatorID, repo.createdKnowledge.CreatorID)
+}
+
+func TestCreateKnowledgeFromFileDuplicateDoesNotClaimExistingKnowledge(t *testing.T) {
+	t.Parallel()
+
+	originalCreator := "user-1"
+	existing := &types.Knowledge{ID: "existing", CreatorID: &originalCreator}
+	repo := &createKnowledgeFileRepoStub{exists: true, existingKnowledge: existing}
+	svc := &knowledgeService{
+		repo:      repo,
+		kbService: &createKnowledgeFileKBServiceStub{kb: &types.KnowledgeBase{ID: "kb-1"}},
+		fileSvc:   &createKnowledgeFileServiceStub{},
+	}
+	ctx := context.WithValue(newCreateKnowledgeFileContext(), types.UserIDContextKey, "user-2")
+
+	knowledge, err := svc.CreateKnowledgeFromFile(
+		ctx,
+		"kb-1",
+		newMultipartFileHeader(t, "same.txt", "hello"),
+		nil,
+		nil,
+		"",
+		nil,
+		"",
+		nil,
+	)
+
+	require.Error(t, err)
+	require.Same(t, existing, knowledge)
+	require.Equal(t, "user-1", *existing.CreatorID)
+	require.Zero(t, repo.createCalls)
+	require.Equal(t, "created_at", repo.updatedColumn)
+}
+
+func TestKnowledgeCreatorIDFromContextRejectsMachineAndSpoofedPrincipals(t *testing.T) {
+	t.Parallel()
+
+	apiCtx := context.WithValue(context.Background(), types.UserIDContextKey, "system-7")
+	apiCtx = types.WithPrincipal(apiCtx, types.Principal{Type: types.PrincipalAPITenant, ID: "7"})
+	require.Nil(t, knowledgeCreatorIDFromContext(apiCtx))
+
+	spoofedCtx := context.WithValue(context.Background(), types.UserIDContextKey, "user-1")
+	spoofedCtx = types.WithPrincipal(spoofedCtx, types.Principal{Type: types.PrincipalWebUser, ID: "user-2"})
+	require.Nil(t, knowledgeCreatorIDFromContext(spoofedCtx))
+
+	require.Nil(t, knowledgeCreatorIDFromContext(context.Background()))
 }
 
 func TestCreateKnowledgeFromImageFallsBackWhenLegacyStorageConfigIsIncomplete(t *testing.T) {

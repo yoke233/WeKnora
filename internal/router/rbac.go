@@ -1,10 +1,12 @@
 package router
 
 import (
+	stderrors "errors"
 	"net/http"
 	"path"
 	"strings"
 
+	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/middleware"
@@ -499,6 +501,97 @@ func (g *rbacGuards) OwnedChunkKBOrAdminFromChunkID() gin.HandlerFunc {
 // service — no knowledge chain. Same matrix as OwnedKBOrAdmin.
 func (g *rbacGuards) OwnedWikiKBOrAdmin() gin.HandlerFunc {
 	return middleware.RequireOwnershipOrRole(types.TenantRoleAdmin, g.wikiKBCreator, g.cfg)
+}
+
+func ownershipLookupError(err error) error {
+	if stderrors.Is(err, apprepo.ErrKnowledgeBaseNotFound) ||
+		stderrors.Is(err, apprepo.ErrKnowledgeNotFound) ||
+		stderrors.Is(err, apprepo.ErrChunkNotFound) {
+		return middleware.ErrResourceNotFound
+	}
+	return err
+}
+
+func creatorValue(creatorID *string) string {
+	if creatorID == nil {
+		return ""
+	}
+	return *creatorID
+}
+
+func (g *rbacGuards) managedKBPolicy(param string, policy middleware.ManagedResourcePolicy) gin.HandlerFunc {
+	return middleware.RequireManagedTenantResource(func(c *gin.Context) (middleware.OwnershipResource, error) {
+		kb, err := g.kbService.GetKnowledgeBaseByID(c.Request.Context(), c.Param(param))
+		if err != nil {
+			return middleware.OwnershipResource{}, ownershipLookupError(err)
+		}
+		if kb == nil {
+			return middleware.OwnershipResource{}, middleware.ErrResourceNotFound
+		}
+		return middleware.OwnershipResource{
+			TenantID: kb.TenantID, CreatorID: kb.CreatorID,
+			ManagedAdminOnly: kb.Type != types.KnowledgeBaseTypeDocument,
+		}, nil
+	}, policy, g.cfg)
+}
+
+func (g *rbacGuards) managedKnowledgePolicy(param string) gin.HandlerFunc {
+	return middleware.RequireManagedTenantResource(func(c *gin.Context) (middleware.OwnershipResource, error) {
+		knowledge, err := g.knowledgeService.GetKnowledgeByIDOnly(c.Request.Context(), c.Param(param))
+		if err != nil {
+			return middleware.OwnershipResource{}, ownershipLookupError(err)
+		}
+		if knowledge == nil {
+			return middleware.OwnershipResource{}, middleware.ErrResourceNotFound
+		}
+		return g.knowledgeOwnershipResource(c, knowledge)
+	}, middleware.ManagedResourceDocumentOwner, g.cfg)
+}
+
+func (g *rbacGuards) managedChunkPolicyFromKnowledge(param string) gin.HandlerFunc {
+	return g.managedKnowledgePolicy(param)
+}
+
+func (g *rbacGuards) managedChunkPolicyFromChunk(param string) gin.HandlerFunc {
+	return middleware.RequireManagedTenantResource(func(c *gin.Context) (middleware.OwnershipResource, error) {
+		chunk, err := g.chunkService.GetChunkByIDOnly(c.Request.Context(), c.Param(param))
+		if err != nil {
+			return middleware.OwnershipResource{}, ownershipLookupError(err)
+		}
+		if chunk == nil {
+			return middleware.OwnershipResource{}, middleware.ErrResourceNotFound
+		}
+		knowledge, err := g.knowledgeService.GetKnowledgeByIDOnly(c.Request.Context(), chunk.KnowledgeID)
+		if err != nil {
+			return middleware.OwnershipResource{}, ownershipLookupError(err)
+		}
+		if knowledge == nil {
+			return middleware.OwnershipResource{}, middleware.ErrResourceNotFound
+		}
+		return g.knowledgeOwnershipResource(c, knowledge)
+	}, middleware.ManagedResourceDocumentOwner, g.cfg)
+}
+
+func (g *rbacGuards) knowledgeOwnershipResource(c *gin.Context, knowledge *types.Knowledge) (middleware.OwnershipResource, error) {
+	kb, err := g.kbService.GetKnowledgeBaseByID(c.Request.Context(), knowledge.KnowledgeBaseID)
+	if err != nil {
+		return middleware.OwnershipResource{}, ownershipLookupError(err)
+	}
+	if kb == nil || kb.TenantID != knowledge.TenantID {
+		return middleware.OwnershipResource{}, middleware.ErrResourceNotFound
+	}
+	creatorID := kb.CreatorID
+	if g.cfg != nil && g.cfg.Tenant.IsFileOwnershipEnabled(knowledge.TenantID) {
+		creatorID = creatorValue(knowledge.CreatorID)
+	}
+	return middleware.OwnershipResource{
+		TenantID: knowledge.TenantID, CreatorID: creatorID,
+		ManagedAdminOnly: kb.Type != types.KnowledgeBaseTypeDocument,
+	}, nil
+}
+
+func (g *rbacGuards) managedKBCreateRole() gin.HandlerFunc {
+	return middleware.RequireManagedTenantCreateRole(g.cfg)
 }
 
 // Tenant-access guards. Distinct from the role guards above: these

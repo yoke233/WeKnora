@@ -24,16 +24,16 @@ var versionedSQLiteTables = []string{
 // versionedSQLiteColumns maps each existing table to the columns that the
 // versioned migrations add and the SQLite baseline was missing.
 var versionedSQLiteColumns = map[string][]string{
-	"tenants":            {"api_principal_config"},           // 000064
-	"users":              {"is_system_admin"},                // 000053
-	"knowledges":         {"pending_subtasks_count"},         // 000056
-	"messages":           {"attachments", "usage"},           // 000034, 000085
-	"tenant_invitations": {"token", "accepted_count"},        // 000054
-	"embed_channels":     {"allow_memory"},                   // 000060
-	"mcp_oauth_tokens":   {"principal_type", "principal_id"}, // 000064
+	"tenants":            {"api_principal_config"},                 // 000064
+	"users":              {"is_system_admin"},                      // 000053
+	"knowledges":         {"pending_subtasks_count", "creator_id"}, // 000056, 000091
+	"messages":           {"attachments", "usage"},                 // 000034, 000085
+	"tenant_invitations": {"token", "accepted_count"},              // 000054
+	"embed_channels":     {"allow_memory"},                         // 000060
+	"mcp_oauth_tokens":   {"principal_type", "principal_id"},       // 000064
 }
 
-const expectedSQLiteMigrationVersion = 12
+const expectedSQLiteMigrationVersion = 13
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
@@ -120,6 +120,13 @@ func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 	var sentinelName string
 	require.NoError(t, db.QueryRow("SELECT name FROM tenants WHERE business = ?", "migration-test").Scan(&sentinelName))
 	require.Equal(t, "upgrade-sentinel", sentinelName)
+
+	var legacyCreator sql.NullString
+	require.NoError(t, db.QueryRow(
+		"SELECT creator_id FROM knowledges WHERE id = ?",
+		"legacy-knowledge-1",
+	).Scan(&legacyCreator))
+	require.False(t, legacyCreator.Valid, "migration must not invent ownership for legacy knowledge")
 
 	var relationCount int
 	require.NoError(t, db.QueryRow(

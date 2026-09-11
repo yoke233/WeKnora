@@ -230,6 +230,11 @@ type TenantConfig struct {
 	// users may create a workspace for themselves. Nil preserves the
 	// historical default (enabled); cross-tenant superusers are exempt.
 	SelfServiceCreationEnabled *bool `yaml:"self_service_creation_enabled" json:"self_service_creation_enabled" mapstructure:"self_service_creation_enabled"`
+	// FileOwnershipTenantID enables per-document ownership policy for one
+	// managed workspace. Zero disables the policy. The environment override is
+	// WEKNORA_TENANT_FILE_OWNERSHIP_TENANT_ID.
+	FileOwnershipTenantID        uint64 `yaml:"file_ownership_tenant_id" json:"file_ownership_tenant_id" mapstructure:"file_ownership_tenant_id"`
+	fileOwnershipTenantIDInvalid string
 }
 
 // IsRBACEnforced reports whether tenant-level role enforcement is
@@ -249,6 +254,13 @@ func (t *TenantConfig) IsRBACEnforced() bool {
 // tenants. Nil keeps the historical behaviour enabled.
 func (t *TenantConfig) IsSelfServiceCreationEnabled() bool {
 	return t == nil || t.SelfServiceCreationEnabled == nil || *t.SelfServiceCreationEnabled
+}
+
+// IsFileOwnershipEnabled reports whether tenantID is the configured managed
+// workspace. Zero is deliberately never managed.
+func (t *TenantConfig) IsFileOwnershipEnabled(tenantID uint64) bool {
+	return t != nil && tenantID != 0 && t.FileOwnershipTenantID != 0 &&
+		t.FileOwnershipTenantID == tenantID
 }
 
 // AuditConfig governs durable audit log behaviour. Writes happen on
@@ -642,6 +654,13 @@ func ValidateConfig(cfg *Config) error {
 		}
 	}
 
+	if cfg.Tenant != nil && cfg.Tenant.fileOwnershipTenantIDInvalid != "" {
+		errs = append(errs, fmt.Sprintf(
+			"WEKNORA_TENANT_FILE_OWNERSHIP_TENANT_ID must be an unsigned integer, got %q",
+			cfg.Tenant.fileOwnershipTenantIDInvalid,
+		))
+	}
+
 	if cfg.Audit != nil && cfg.Audit.RetentionDays < 0 {
 		errs = append(errs, fmt.Sprintf("audit.retention_days must be >= 0 (got %d); use 0 to disable purge",
 			cfg.Audit.RetentionDays))
@@ -884,6 +903,19 @@ func applyAuthAndTenantDefaults(cfg *Config) {
 	// stays whatever config.yaml provides (false unless set there).
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_TENANT_ENABLE_CROSS_TENANT_ACCESS")); value != "" {
 		cfg.Tenant.EnableCrossTenantAccess = strings.EqualFold(value, "true")
+	}
+
+	cfg.Tenant.fileOwnershipTenantIDInvalid = ""
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_TENANT_FILE_OWNERSHIP_TENANT_ID")); value != "" {
+		tenantID, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			// Disable the policy in memory and make validation fail. An invalid
+			// deployment value must never accidentally select a different tenant.
+			cfg.Tenant.FileOwnershipTenantID = 0
+			cfg.Tenant.fileOwnershipTenantIDInvalid = value
+		} else {
+			cfg.Tenant.FileOwnershipTenantID = tenantID
+		}
 	}
 
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_TENANT_SELF_SERVICE_CREATION_ENABLED")); value != "" {

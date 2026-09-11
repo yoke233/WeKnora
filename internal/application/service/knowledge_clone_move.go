@@ -928,6 +928,7 @@ func (s *knowledgeService) getOrCreateFAQKnowledge(ctx context.Context, kb *type
 		ID:               uuid.New().String(),
 		TenantID:         kb.TenantID,
 		KnowledgeBaseID:  kb.ID,
+		CreatorID:        knowledgeCreatorIDFromContext(ctx),
 		Type:             types.KnowledgeTypeFAQ,
 		Channel:          types.ChannelWeb,
 		Title:            "FAQ",

@@ -180,13 +180,13 @@ func RegisterOrganizationRoutes(r *gin.RouterGroup, orgHandler *handler.Organiza
 	kbShares := g.apiKeyGroup(r.Group("/knowledge-bases/:id/shares"), apiKeyFullAccess())
 	{
 		// Share knowledge base
-		kbShares.POST("", g.OwnedKBOrAdmin(), orgHandler.ShareKnowledgeBase)
+		kbShares.POST("", g.managedKBPolicy("id", middleware.ManagedResourceAdmin), orgHandler.ShareKnowledgeBase)
 		// List shares — Viewer+ 即可，纯读取
 		kbShares.GET("", g.Viewer(), orgHandler.ListKBShares)
 		// Update share permission
-		kbShares.PUT("/:share_id", g.OwnedKBOrAdmin(), orgHandler.UpdateSharePermission)
+		kbShares.PUT("/:share_id", g.managedKBPolicy("id", middleware.ManagedResourceAdmin), orgHandler.UpdateSharePermission)
 		// Remove share
-		kbShares.DELETE("/:share_id", g.OwnedKBOrAdmin(), orgHandler.RemoveShare)
+		kbShares.DELETE("/:share_id", g.managedKBPolicy("id", middleware.ManagedResourceAdmin), orgHandler.RemoveShare)
 	}
 
 	// Agent sharing routes — same rationale as KB shares: 分享/取消分享

@@ -128,6 +128,9 @@ type Knowledge struct {
 	TenantID uint64 `json:"tenant_id"`
 	// ID of the knowledge base
 	KnowledgeBaseID string `json:"knowledge_base_id"`
+	// CreatorID identifies the authenticated WeKnora user who created this
+	// knowledge. Machine-created and legacy records intentionally remain NULL.
+	CreatorID *string `json:"creator_id" gorm:"type:varchar(36)"`
 	// Tags holds the tags associated with this knowledge (populated on query, not persisted directly).
 	Tags []*KnowledgeTag `json:"tags"               gorm:"-"`
 	// Type of the knowledge
