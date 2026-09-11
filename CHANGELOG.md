@@ -2,11 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## YJ API customization (unreleased, based on 0.8.0)
+## YJ API customization 0.8.0-yj.1 - 2026-09-11
 
 - Add nullable, immutable knowledge `creator_id` through PostgreSQL migration 000091 and SQLite migration 000013. Only authenticated human creation assigns ownership; legacy/machine records remain unowned and duplicate uploads never transfer ownership.
 - Opt one team into uploader-based document/chunk writes with `WEKNORA_TENANT_FILE_OWNERSHIP_TENANT_ID`. Contributors can upload to its document KBs and mutate their own files; KB lifecycle and shared FAQ/Wiki/tag management remain admin-only. Batch writes preflight every document; personal-workspace and scoped API-key rules remain native.
-- No frontend changes. The manual `yj-images.yml` workflow builds only the ARM64 app and publishes commit-addressed GHCR images only when explicitly requested.
+- No frontend changes. `yj-images.yml` builds only the ARM64 app. Explicit `v*-yj.*` release tags publish commit-addressed GHCR images; manual dispatch publishes only when requested.
 - Back up the database before rollout. Downgrading the creator migration discards attribution, and reverting to an official app restores different authorization behavior; neither is a permission-safe rollback by itself.
 
 ## [0.8.0] - 2026-09-03
