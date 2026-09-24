@@ -228,6 +228,7 @@ type SearchResult struct {
 
 // SearchParams represents the search parameters
 type SearchParams struct {
+	RRFWeightOverride
 	// QueryText is required unless query_embedding is provided, keyword matching is disabled,
 	// and vector matching remains enabled.
 	QueryText            string    `json:"query_text"`

@@ -94,6 +94,9 @@ func (s *knowledgeBaseService) HybridSearch(ctx context.Context,
 	id string,
 	params types.SearchParams,
 ) ([]*types.SearchResult, error) {
+	if err := params.RRFWeightOverride.Validate(); err != nil {
+		return nil, apperrors.NewBadRequestError(err.Error())
+	}
 	// Normalize once, before anything reads MatchCount. params is a value
 	// copy, so this stays local to the call.
 	params.MatchCount = normalizedMatchCount(params.MatchCount)
@@ -241,10 +244,11 @@ func (s *knowledgeBaseService) HybridSearch(ctx context.Context,
 		len(vectorResults), len(keywordResults))
 
 	var retrievalCfg *types.RetrievalConfig
-	if tenantInfo != nil {
+	if tenantInfo != nil && tenantInfo.RetrievalConfig != nil {
 		retrievalCfg = tenantInfo.RetrievalConfig
 	}
-	deduplicatedChunks := fuseOrDeduplicate(ctx, vectorResults, keywordResults, retrievalCfg)
+	deduplicatedChunks := fuseOrDeduplicate(ctx, vectorResults, keywordResults,
+		effectiveRRFConfig(retrievalCfg, params.RRFWeightOverride))
 
 	kb.EnsureDefaults()
 

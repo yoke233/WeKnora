@@ -811,6 +811,7 @@ func (s *sessionService) KnowledgeQAByEvent(ctx context.Context,
 // knowledgeIDs: list of specific knowledge (file) IDs to search
 func (s *sessionService) SearchKnowledge(ctx context.Context,
 	knowledgeBaseIDs []string, knowledgeIDs []string, tagScopes []types.TagScope, query string,
+	rrfWeights types.RRFWeightOverride,
 ) ([]*types.SearchResult, error) {
 	logger.Info(ctx, "Start knowledge base search without LLM summary")
 	logger.Infof(ctx, "Knowledge base search parameters, knowledge base IDs: %v, knowledge IDs: %v, tag scopes: %d, query: %s",
@@ -845,17 +846,18 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 
 	chatManage := &types.ChatManage{
 		PipelineRequest: types.PipelineRequest{
-			Query:            query,
-			UserID:           userID,
-			KnowledgeBaseIDs: knowledgeBaseIDs,
-			KnowledgeIDs:     knowledgeIDs,
-			SearchTargets:    searchTargets,
-			MaxRounds:        s.cfg.Conversation.MaxRounds,
-			EmbeddingTopK:    rc.GetEffectiveEmbeddingTopK(),
-			VectorThreshold:  rc.GetEffectiveVectorThreshold(),
-			KeywordThreshold: rc.GetEffectiveKeywordThreshold(),
-			RerankTopK:       rc.GetEffectiveRerankTopK(),
-			RerankThreshold:  rc.GetEffectiveRerankThreshold(),
+			Query:             query,
+			UserID:            userID,
+			KnowledgeBaseIDs:  knowledgeBaseIDs,
+			KnowledgeIDs:      knowledgeIDs,
+			SearchTargets:     searchTargets,
+			MaxRounds:         s.cfg.Conversation.MaxRounds,
+			EmbeddingTopK:     rc.GetEffectiveEmbeddingTopK(),
+			VectorThreshold:   rc.GetEffectiveVectorThreshold(),
+			KeywordThreshold:  rc.GetEffectiveKeywordThreshold(),
+			RerankTopK:        rc.GetEffectiveRerankTopK(),
+			RerankThreshold:   rc.GetEffectiveRerankThreshold(),
+			RRFWeightOverride: rrfWeights,
 		},
 		PipelineState: types.PipelineState{
 			RewriteQuery: query,

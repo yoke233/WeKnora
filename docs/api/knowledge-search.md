@@ -18,8 +18,11 @@
 | knowledge_base_id   | string   | 否   | 单个知识库 ID（向后兼容）；与 `knowledge_base_ids` 互斥    |
 | knowledge_base_ids  | string[] | 否   | 多个知识库 ID 列表，跨知识库搜索                          |
 | knowledge_ids       | string[] | 否   | 进一步限定到指定知识（文件）；不传则在整库范围内搜索       |
+| rrf_vector_weight   | number   | 否   | 本次检索的向量融合权重；须与关键词权重一起传入             |
+| rrf_keyword_weight  | number   | 否   | 本次检索的关键词融合权重；两项均须大于 0 且合计为 1       |
 
 > 必须指定 `knowledge_base_id` 或 `knowledge_base_ids` 中的至少一个。
+> 省略两项 RRF 权重时使用当前空间的检索配置及 WeKnora 默认值；请求值只影响本次搜索。
 
 **查询参数**:
 
@@ -34,7 +37,9 @@ curl --location 'http://localhost:8080/api/v1/knowledge-search' \
 --header 'Content-Type: application/json' \
 --data '{
     "query": "如何使用知识库",
-    "knowledge_base_id": "kb-00000001"
+    "knowledge_base_id": "kb-00000001",
+    "rrf_vector_weight": 0.3,
+    "rrf_keyword_weight": 0.7
 }'
 
 # 搜索多个知识库

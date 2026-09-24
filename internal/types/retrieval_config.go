@@ -3,7 +3,31 @@ package types
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
+	"math"
 )
+
+// RRFWeightOverride applies to one search request. Omitted weights leave the
+// workspace retrieval configuration in effect.
+type RRFWeightOverride struct {
+	RRFVectorWeight  *float64 `json:"rrf_vector_weight,omitempty"`
+	RRFKeywordWeight *float64 `json:"rrf_keyword_weight,omitempty"`
+}
+
+func (o RRFWeightOverride) Validate() error {
+	if o.RRFVectorWeight == nil && o.RRFKeywordWeight == nil {
+		return nil
+	}
+	if o.RRFVectorWeight == nil || o.RRFKeywordWeight == nil {
+		return fmt.Errorf("rrf_vector_weight and rrf_keyword_weight must be provided together")
+	}
+	v, k := *o.RRFVectorWeight, *o.RRFKeywordWeight
+	if math.IsNaN(v) || math.IsInf(v, 0) || math.IsNaN(k) || math.IsInf(k, 0) ||
+		v <= 0 || k <= 0 || math.Abs(v+k-1) > 1e-9 {
+		return fmt.Errorf("RRF weights must be positive and sum to 1")
+	}
+	return nil
+}
 
 // RetrievalConfig holds the global retrieval/search configuration for a tenant.
 // This replaces the retrieval-related fields previously scattered in ConversationConfig

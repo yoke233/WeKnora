@@ -71,6 +71,7 @@ type AttachmentUpload struct {
 
 // SearchKnowledgeRequest defines the request structure for searching knowledge without LLM summarization
 type SearchKnowledgeRequest struct {
+	types.RRFWeightOverride
 	Query            string                 `json:"query"              binding:"required"` // Query text to search for
 	KnowledgeBaseID  string                 `json:"knowledge_base_id"`                     // Single knowledge base ID (for backward compatibility)
 	KnowledgeBaseIDs []string               `json:"knowledge_base_ids"`                    // IDs of knowledge bases to search (multi-KB support)

@@ -419,6 +419,10 @@ curl --location --request PUT 'http://localhost:8080/api/v1/knowledge-bases/kb-0
 | only_recommended         | boolean  | 否   | 仅返回标记为推荐的内容                                           |
 | knowledge_base_ids       | string[] | 否   | 跨知识库召回（需共享相同 embedding 模型），优先级高于路径中的 `:id` |
 | skip_context_enrichment  | boolean  | 否   | 跳过父子片段/相邻片段的上下文补全（chat 流程使用）               |
+| rrf_vector_weight        | number   | 否   | 本次检索的向量融合权重；须与关键词权重一起传入                   |
+| rrf_keyword_weight       | number   | 否   | 本次检索的关键词融合权重；两项均须大于 0 且合计为 1             |
+
+省略两项 RRF 权重时使用当前空间的检索配置及 WeKnora 默认值；请求值只影响本次搜索。
 
 **请求**:
 

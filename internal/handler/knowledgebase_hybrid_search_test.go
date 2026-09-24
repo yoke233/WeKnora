@@ -104,6 +104,29 @@ func TestHybridSearchAcceptsQueryText(t *testing.T) {
 	}
 }
 
+func TestHybridSearchPassesRequestRRFWeights(t *testing.T) {
+	svc := &hybridSearchTestService{}
+	response := performHybridSearchRequest(svc,
+		`{"query_text":"student id","rrf_vector_weight":0.3,"rrf_keyword_weight":0.7}`)
+	if response.Code != http.StatusOK || svc.searchCalls != 1 ||
+		svc.searchParams.RRFVectorWeight == nil || svc.searchParams.RRFKeywordWeight == nil ||
+		*svc.searchParams.RRFVectorWeight != 0.3 ||
+		*svc.searchParams.RRFKeywordWeight != 0.7 {
+		t.Fatalf("request weights not forwarded: status=%d calls=%d params=%+v body=%s",
+			response.Code, svc.searchCalls, svc.searchParams, response.Body.String())
+	}
+}
+
+func TestHybridSearchRejectsInvalidRRFWeights(t *testing.T) {
+	svc := &hybridSearchTestService{}
+	response := performHybridSearchRequest(svc,
+		`{"query_text":"student id","rrf_vector_weight":0.3,"rrf_keyword_weight":0.8}`)
+	if response.Code != http.StatusBadRequest || svc.searchCalls != 0 {
+		t.Fatalf("invalid weights reached search: status=%d calls=%d body=%s",
+			response.Code, svc.searchCalls, response.Body.String())
+	}
+}
+
 func TestHybridSearchAcceptsPrecomputedVectorWithoutQueryText(t *testing.T) {
 	svc := &hybridSearchTestService{}
 	response := performHybridSearchRequest(

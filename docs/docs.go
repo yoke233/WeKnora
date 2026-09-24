@@ -21272,6 +21272,12 @@ const docTemplate = `{
                     "description": "QueryText is required unless query_embedding is provided, keyword matching is disabled,\nand vector matching remains enabled.",
                     "type": "string"
                 },
+                "rrf_keyword_weight": {
+                    "type": "number"
+                },
+                "rrf_vector_weight": {
+                    "type": "number"
+                },
                 "scope_tag_ids": {
                     "type": "array",
                     "items": {
@@ -25387,6 +25393,12 @@ const docTemplate = `{
                 "query": {
                     "description": "Query text to search for",
                     "type": "string"
+                },
+                "rrf_keyword_weight": {
+                    "type": "number"
+                },
+                "rrf_vector_weight": {
+                    "type": "number"
                 },
                 "tag_ids": {
                     "description": "Tag IDs for filtering within a single KB",

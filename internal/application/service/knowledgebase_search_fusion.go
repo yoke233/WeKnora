@@ -28,6 +28,20 @@ func classifyRetrievalResults(ctx context.Context, retrieveResults []*types.Retr
 	return
 }
 
+// effectiveRRFConfig applies request weights to a copy of the workspace
+// configuration, so one search cannot change another search's settings.
+func effectiveRRFConfig(tenant *types.RetrievalConfig, override types.RRFWeightOverride) *types.RetrievalConfig {
+	var effective types.RetrievalConfig
+	if tenant != nil {
+		effective = *tenant
+	}
+	if override.RRFVectorWeight != nil {
+		effective.RRFVectorWeight = *override.RRFVectorWeight
+		effective.RRFKeywordWeight = *override.RRFKeywordWeight
+	}
+	return &effective
+}
+
 // fuseOrDeduplicate either fuses vector+keyword results via RRF or deduplicates vector-only results.
 // retrievalCfg may be nil — defaults are then used for RRF parameters.
 func fuseOrDeduplicate(ctx context.Context, vectorResults, keywordResults []*types.IndexWithScore, retrievalCfg *types.RetrievalConfig) []*types.IndexWithScore {

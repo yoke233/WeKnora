@@ -718,6 +718,10 @@ func (h *Handler) SearchKnowledge(c *gin.Context) {
 		c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
+	if err := request.RRFWeightOverride.Validate(); err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
 
 	// Validate request parameters
 	if request.Query == "" {
@@ -780,7 +784,7 @@ func (h *Handler) SearchKnowledge(c *gin.Context) {
 	)
 
 	// Directly call knowledge retrieval service without LLM summarization
-	searchResults, err := h.sessionService.SearchKnowledge(ctx, knowledgeBaseIDs, request.KnowledgeIDs, tagScopes, request.Query)
+	searchResults, err := h.sessionService.SearchKnowledge(ctx, knowledgeBaseIDs, request.KnowledgeIDs, tagScopes, request.Query, request.RRFWeightOverride)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(errors.NewInternalServerError(err.Error()))
